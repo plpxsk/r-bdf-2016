@@ -1,0 +1,147 @@
+# Visualizing data with ggplot2
+```{r set-options, echo=FALSE, cache=FALSE}
+options(width = 90)
+```
+
+# Motivation
+To build good machine learning models, you should understand your data. This is even more important if you will be presenting your model results to a non-technical (business) audience.
+
+A good graphic or visualization can be very convincing. 
+
+`ggplot` is the standard for exploratory graphcis in R, and is very popular for publishing too.
+
+# Introductory Examples
+
+```{r, message=FALSE}
+library(dplyr)
+library(ggplot2)
+df0 <- readRDS("data/inpatient_charges_2014_clean_cardiac_50plus.RDS")
+```
+```{r}
+df <- df0 %>% filter(DRG.code %in% c(220:240))
+```
+```{r, echo=FALSE}
+theme_set(theme_bw())
+```
+```{r}
+ggplot(df, aes(x=reorder(factor(DRG.code), Average.Total.Payments, median, order=TRUE), y=Average.Total.Payments, fill=factor(DRG.code))) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(alpha=0.08) +
+  coord_flip() +
+  scale_y_continuous(breaks=scales::pretty_breaks(8)) +
+  ggtitle("Average Total Payments, by DRG code") +
+  labs(x="DRG code", y="Payment ($)") +
+  theme(legend.position="none")
+```
+
+
+# Concepts
+
+	"ggplot2 is designed to work in a layered fashion, starting with a
+	layer showing the raw data then adding layers of annotation and
+	statistical summaries."
+
+
+Plot with `ggplot()` or quick plot with `qplot()`
+
+Specify x, y and aesthetics with `aes()` inside `ggplot()`. Pass string names with `aes_string()`.
+
+Add layers with `+` such as geom's: `+ geom_point()`
+```{r, echo=FALSE}
+theme_set(theme_bw())
+```
+
+```{r}
+## Let's illustrate these concepts with a simple scatterplot
+ggplot(data=df, aes(x=Average.Covered.Charges, y=Average.Total.Payments)) +
+    geom_point()
+
+## easily add smoother 
+ggplot(data=df, aes(x=Average.Covered.Charges, y=Average.Total.Payments)) +
+  geom_point() +
+  geom_smooth(method="lm")
+
+## customize color
+ggplot(data=df, aes(x=Average.Covered.Charges, y=Average.Total.Payments)) +
+    geom_point(colour="red")
+
+## customize group/color
+## use pretty scales with brewer
+ggplot(data=df, aes(x=Average.Covered.Charges, y=Average.Total.Payments,
+                    colour=factor(DRG.code))) +
+    geom_point(alpha=0.4) +
+    scale_color_brewer(type="div")
+
+## different geom: a histogram (univariate summary)
+ggplot(df, aes(Average.Total.Payments)) + geom_histogram()
+
+## a bar chart
+ggplot(df, aes(x=DRG.code)) + geom_bar()
+```
+
+## Let's explore ggplot layering with a boxplot
+```{r}
+## distinct(df, DRG.code)
+
+p <- ggplot(df, aes(x=factor(DRG.code), y=Average.Total.Payments))
+
+p + geom_boxplot()
+
+p + geom_boxplot() + geom_jitter()
+
+p + geom_boxplot(outlier.shape = NA) + geom_jitter(alpha=0.2)
+
+p + geom_boxplot(outlier.shape = NA) + geom_jitter(alpha=0.2) + coord_flip()
+```
+
+
+## Use *facets* to explore data by sub-groups
+```{r}
+df2 <- df %>% filter(Provider.State %in% c("DC", "VA", "MD"))
+
+ggplot(df2, aes(x=factor(Provider.State), y=Average.Total.Payments)) +
+    geom_jitter() +
+    facet_wrap(~DRG.code) + 
+    ggtitle("Payments by Provider State") +
+    labs(y="Average Total Payment", x="State")
+
+ggplot(df2, aes(x=factor(Provider.State), y=Average.Total.Payments)) +
+    geom_jitter() +
+    facet_grid(~DRG.code) + 
+    ggtitle("Payments by Provider State") +
+    labs(y="Average Total Payment", x="State")
+
+
+```
+
+
+## qplot(): a quick plot, like base R plot()
+
+```{r}
+## plots histogram if given 1 variable
+qplot(Average.Total.Payments, data=df)
+
+## plots scatterplot if given 2 variables
+qplot(Average.Covered.Charges, Average.Total.Payments, data=df)
+
+qplot(Average.Covered.Charges, Average.Total.Payments, data=df,
+      geom="line")
+```
+
+
+# Summary
+
+ggplot is the standard for exploratory data visualizations
+
+## References:
+James et al, p 45, 49
+
+[http://docs.ggplot2.org/current/](http://docs.ggplot2.org/current/)
+
+[https://github.com/AmeliaMN/ggplot2_tutorial](https://github.com/AmeliaMN/ggplot2_tutorial)
+
+# Exercises
+
+1. Subset data frame `df2` to DC and plot Average.Medicare.Payments for each DRG.code.
+
+2. Use a search engine to find a way to create a scatterplot matrix of the 3 Payment variables. 

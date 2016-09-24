@@ -1,0 +1,213 @@
+# Tidying-up model results with broom
+```{r set-options, echo=FALSE, cache=FALSE}
+options(width = 90)
+```
+
+# Motivation
+
+In R, model inputs are often tidy. However, model outputs are messy and inconsistent.
+
+This is especially burdensome when working with many models at once (eg,
+running the same model on different subsets of data and comparing results).
+
+For example, you need to extract p-values from a few regression models. Is this parameter called "pval"" or "PValue"?"
+
+The solution is broom:
+
+        The broom package takes the messy output of built-in functions in R,
+        such as lm, nls, or t.test, and turns them into tidy data frames.
+
+
+# Introductory Examples
+```{r, message=FALSE}
+library(dplyr)
+library(broom)
+```
+```{r}
+df0 <- readRDS("data/inpatient_charges_2014_clean_cardiac_50plus.RDS")
+```
+```{r}
+## You can tidy up lm output with tidy()
+df0 %>%
+    group_by(DRG.code) %>%
+    do(
+        tidy(lm(Average.Total.Payments ~ Total.Discharges, data=.))
+    )
+
+## You can review model fit with glance()
+df0 %>%
+    group_by(DRG.code) %>%
+    do(
+        glance(lm(Average.Total.Payments ~ Total.Discharges, data=.))
+    ) %>%
+  arrange(desc(adj.r.squared))
+```
+
+# Concepts
+Let's learn to tidy up our model output with broom!
+
+## 3 little functions that do a lot
+```{r, eval=FALSE}
+tidy()             #tidy up model output
+glance()           #obtain one-row summary of model fit (R^2, AIC...)
+augment()          #augment model output with more info (residuals, predictions, ...) 
+```
+
+The output differs slightly depending on what model you run, but it strives for consistency. A p-value is always `p.value`.
+
+```{r}
+## prepare data
+myvars <- c("Provider.Id", "DRG.code", "Average.Medicare.Payments",
+            "Average.Covered.Charges", "Average.Total.Payments",
+            "Total.Discharges", "Provider.State")
+df <- df0 %>% select_(.dots=myvars)
+
+## standard lm
+lm(Average.Total.Payments ~ Total.Discharges, data=df)
+
+## lm summary()
+lm(Average.Total.Payments ~ Total.Discharges, data=df) %>% summary
+
+## tidy() results
+lm(Average.Total.Payments ~ Total.Discharges, data=df) %>% tidy
+
+## use glance() to see fit statistics (1 row/model)
+lm(Average.Total.Payments ~ Total.Discharges, data=df) %>% summary %>% glance
+
+## augment() results to see predictions, clusters, etc
+lm(Average.Total.Payments ~ Total.Discharges, data=df) %>% augment %>% tbl_df
+
+```
+
+## do() from dplyr is a helper for broom
+Recall that usually, dplyr returns a single value. We use `do()` when we aim to return something else.
+
+Broom cleans up model outputs which return more than just a single value.
+
+This is most useful when working with multiple models:
+
+```{r}
+df %>%
+    group_by(DRG.code) %>%
+    do(
+        tidy(lm(Average.Total.Payments ~ Total.Discharges, data=.))
+    )
+
+## rewrite it a bit. note placement of %>%
+df %>%
+    group_by(DRG.code) %>%
+    do(
+        lm(Average.Total.Payments ~ Total.Discharges, data=.)
+        %>%  tidy
+    )
+
+## augment it with more info
+df %>%
+    group_by(DRG.code) %>%
+    do(
+        lm(Average.Total.Payments ~ Total.Discharges, data=.)
+        %>% augment %>% tidy
+    )
+```
+
+Of course, you can use other models: `glm()`, correlations, wilcoxon, other hypothesis tests.
+
+
+```{r}
+## example: correlations
+df %>%
+    group_by(DRG.code) %>%
+    do(
+        cor.test(.$Average.Total.Payments, .$Average.Medicare.Payments) %>% tidy 
+    ) 
+```
+
+## Streamline workflow by saving models into data frame
+```{r}
+## assign lm output to new variable `fit`
+(regressions <- df %>% group_by(DRG.code) %>%
+    do(fit = lm(Average.Medicare.Payments ~ Total.Discharges, .)))
+
+regressions %>% tidy(fit)
+```
+
+## Application: visualize p-values
+```{r}
+df2 <- df %>% filter(Provider.State %in% c("DC", "MD", "VA"))
+
+(result <- df2 %>%
+    group_by(DRG.code) %>%
+    do(
+        fit=lm(Average.Total.Payments ~ Total.Discharges + factor(Provider.State), data=.)
+    ))
+
+library(ggplot2)
+result %>% tidy(fit) %>% qplot(p.value, data=.) + facet_wrap(~term)
+
+## which DRG codes give the smallest p-value?
+result %>% tidy(fit) %>% filter(term=="Total.Discharges") %>% arrange(p.value)
+
+## Q: what is the "statistic"?
+result %>% glance(fit) %>% arrange(desc(adj.r.squared))
+
+## you can easily filter the tidy output
+result %>% filter(DRG.code==220) %>% tidy(fit)
+```
+
+# Summary
+
+Use `broom`, along with `dplyr`, to improve your workflow. These three functions, which always return a data frame, will help you:
+
+```{r, eval=FALSE}
+tidy()             #tidy up model output
+glance()           #return summary of model fit
+augment()          #augment model output with more info (residuals, predictions) ( before tidy() )
+```
+
+In summary, with this workflow:
+
+        a new class of analyses and visualizations becomes straightforward. This includes
+
+        * Sorting by p-value or estimate to find the most significant terms across all tests
+        * P-value histograms
+        * Volcano plots comparing p-values to effect size estimates
+
+        In each of these cases, we can easily filter, facet, or distinguish
+        based on the term column. In short, this makes the tools of tidy data
+        analysis available for the results of data analysis and models, not
+        just the inputs.
+
+
+# Exercises
+
+1. Subset `df0` to provider "360006", then summarize a linear regression for each DRG Code.
+
+2. For each Provider, return top DRG.codes which provide best model fit, using a regression of
+Average.Total.Payment onto Provider.State and Total.Discharges.
+
+3. (From module 1: Create a target y: 0/1, where 1 means Average.Total.Payments is greater than or equal to its mean across each DRG.code, and 0 otherwise). Run a logistic regression, and return model fit summaries.
+
+
+
+# Advanced/Details
+
+If time allows, go through this KMeans clustering vignette(): [https://cran.r-project.org/web/packages/broom/vignettes/kmeans.html](https://cran.r-project.org/web/packages/broom/vignettes/kmeans.html)
+
+See the `broom` conventions here:  
+[https://cran.r-project.org/web/packages/broom/vignettes/broom.html](https://cran.r-project.org/web/packages/broom/vignettes/broom.html)
+
+Also, you can also look into the `purrr` package, which, among other things, can also make modeling easier:
+
+```{r, eval=FALSE}
+df %>%
+    split(.$DRG.code) %>%
+    map( ~ lm(Average.Medicare.Payments ~ Total.Discharges, data=.)) %>%
+    map(summary) %>%
+    #map_dbl("r.squared") %>%
+    map("r.squared") %>%
+    head
+```
+
+In `purrr`, also check out `map_at` and `map_if`.
+
+Natrually, I'm excited that Hadley is now tackling modeling. See `modelr`: [https://github.com/hadley/modelr](https://github.com/hadley/modelr)

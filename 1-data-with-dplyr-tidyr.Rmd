@@ -1,0 +1,294 @@
+# Data manipulation with `dplyr` and `tidyr`
+```{r set-options, echo=FALSE, cache=FALSE}
+options(width = 90)
+```
+
+# Motivation
+
+How much of data science or machine learning is data manipulation?
+
+Advantages of `dplyr` and `tidyr`:
+
+* fast
+* flexible
+* easy to use and easy to read
+
+`dplyr` is a major galaxy in the tidyverse, while `tidyr` is a specialized star.
+
+# Introductory Examples
+
+## dplyr
+
+```{r, message=FALSE}
+library(dplyr)
+
+## data source:
+## https://www.cms.gov/Research-Statistics-Data-and-Systems/Statistics-Trends-and-Reports/Medicare-Provider-Charge-Data/Inpatient2014.html
+df <- readRDS("data/inpatient_charges_2014_clean_cardiac_50plus.RDS")
+```
+```{r, eval=FALSE}
+## can you guess what this does?
+df %>%
+    group_by(DRG.code) %>%
+    summarise(avg_discharges = mean(Total.Discharges)) %>%
+    arrange(desc(avg_discharges))
+```
+
+Q: Which of these is easier to read?
+
+```{r, eval=FALSE}
+paste0("(", gsub(".", "_", tolower(names(df)), fixed=TRUE), ")")
+## or:
+
+names(df) %>%
+    tolower() %>%
+	gsub(".", "_", ., fixed=TRUE) %>%
+	paste0("(", ., ")")
+
+```
+
+## tidyr
+
+
+```{r}
+## reshaping data with `tidyr`
+## starting with a "wide" data frame
+library(tidyr)
+(wide <- df %>% select(DRG.code, Provider.Id, starts_with("Ave")))
+
+## make it "long"
+(long <- wide %>% gather(data=., key=Type, value=Amount, 3:5) %>%
+   arrange(DRG.code,Provider.Id ))
+
+## back to wide
+(back_to_wide  <- long %>% spread(., Type, Amount))
+```
+
+
+
+# Concepts
+
+`dplyr` is an R package for easier data manipulation of **d**ata frames. `tidyr` is a package for reshaping data into a "tidy" format (or long to wide, and wide to long).
+
+In the `dplyr` workflow, you start with a dataframe, then apply the verbs to do
+what you want. The result is a new data frame.
+
+`dplyr` includes the pipe `%>%` operator out of the box, as well as the data frame type `tbl_df`.
+
+What is the pipe? It’s absolutely amazing. The pipe `%>%` “passes the object on the left hand side as the first argument (or . argument) of the function on the right-hand side:”
+
+```{r, eval=FALSE}
+x %>% f(y) is the same as f(x, y)
+
+y %>% f(x, ., z) is the same as f(x, y, z )
+```
+
+`tbl_df` is like a data frame, except that it has a better default print: it prints only 10 records, and provides data type (like `str()`).
+
+The basic verbs (from the official vignette):
+
+  dplyr aims to provide a function for each basic verb of data manipulation:
+
+  filter() (and slice())
+  arrange()
+  select() (and rename())
+  distinct()                      #remove duplicate rows
+  mutate() (and transmute())      #make new columns
+  summarise()
+  sample_n() (and sample_frac())
+
+
+Let's look at each:
+
+```{r}
+## first, a concise summary of the data
+df %>% glimpse
+```
+```{r, eval=FALSE}
+## equivalent to:
+glimpse(df)
+```
+
+```{r}
+## filter() rows
+df %>%
+    filter(DRG.code==233)
+
+## (can assign the result to a new data frame)
+new_df <- df %>%
+    filter(DRG.code==233)
+
+## select() columns
+df %>%
+    select(DRG.code, Provider.Id, Total.Discharges)
+
+## deselect with -
+df %>%
+    select(-DRG.Definition, -DRG.text)
+
+## arrange() result
+df %>%
+    filter(DRG.code==233) %>%
+    select(Provider.Id, Total.Discharges, Provider.State) %>% 
+    arrange(desc(Total.Discharges))
+
+## summarise(), perhaps with a group_by()
+## note: summarise() collapses data, as opposed to mutate, which creates new columns
+## note: you don't need to select the variables before the summarize
+df %>%
+    summarise(total=sum(Average.Total.Payments))
+
+df %>%
+    group_by(DRG.code) %>%
+    summarise(providers=n(),
+              total=sum(Average.Total.Payments)) %>%
+    arrange(desc(total))
+
+## make new columns with mutate()
+df %>%
+    group_by(Provider.Id) %>%
+    select(starts_with("Ave")) %>%
+    mutate(Ave_max=max(Average.Medicare.Payments, Average.Total.Payments,
+                       Average.Covered.Charges))
+                      
+```
+
+Other capabilities:
+
+```{r}
+
+## n() and n_distinct()
+df %>%
+    group_by(DRG.code) %>%
+    summarise(states = n_distinct(Provider.State),
+              codes = n())              #careful with n() 
+
+## compute statistics with summarise()
+df %>%
+    filter(DRG.code==247) %>%
+    group_by(Provider.State) %>% 
+    summarise(min_discharges=min(Total.Discharges),
+              median_discharges=median(Total.Discharges),
+              max_discharges=max(Total.Discharges)) %>%
+    arrange(desc(median_discharges))
+
+
+## obtain distinct values
+df %>%
+    distinct(Provider.Id)
+
+
+## bin data into buckets with ntile
+df %>%
+    select(DRG.code, Provider.Id, Average.Total.Payments) %>%
+    group_by(DRG.code) %>%
+    mutate(payment_quartile = ntile(Average.Total.Payments, 4))
+
+## subsample data (useful)
+df %>%
+  sample_n(10)
+
+df %>%
+  sample_frac(0.2)
+    
+```
+
+
+## Example: an advanced reshape to produce a summary table:
+
+```{r}
+df %>% 
+    select(starts_with("Average")) %>% 
+    summarise_each(funs(n(), mean, sd, min, max))  %>%
+    gather(variable, value)  %>%
+    separate(variable, c("var", "stat"), sep="\\_") %>%
+    spread(var, value)
+```
+
+
+Last, before we do some exercises, let's review this super-useful handout:
+
+[https://www.rstudio.com/wp-content/uploads/2015/02/data-wrangling-cheatsheet.pdf](https://www.rstudio.com/wp-content/uploads/2015/02/data-wrangling-cheatsheet.pdf)
+
+
+# Exercises
+
+1. Explore the dataframe `df` with the basic verbs. For example, select a column and find some summary statistics.
+
+2. Find a few ways to select the columns that refer to location.
+
+2. Build a summary table of Total.Medicare.Payment by Provider-state, arranged in descending order.
+
+3. Subset `df` to 10% of the data, and repeat #2.
+
+4. By DRG.code, return top 3 providers (by Total Medicare Payments).
+
+5. Create a target y: 0/1, where 1 means Average.Total.Payments is greater than or equal to its mean across each DRG.code, and 0 otherwise.
+
+
+# Summary and Takeaways
+
+Download and save/print this data wrangling handout:
+
+[https://www.rstudio.com/wp-content/uploads/2015/02/data-wrangling-cheatsheet.pdf](https://www.rstudio.com/wp-content/uploads/2015/02/data-wrangling-cheatsheet.pdf)
+
+For other useful "window" functions: see the above Data Wrangling handout.
+
+
+## References
+James et al, p. 47
+
+`> vignette("introduction", "dplyr")`
+
+http://stackoverflow.com/documentation/r/topicse
+
+
+# Advanced/Details
+
+Learn to use `top_n()` to return top N values, perhaps by group.
+
+Why chaining?
+https://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html#chaining
+
+The basic pipe `%>%` is just the beginning:
+
+```{r, eval=FALSE}
+library(magrittr)
+## %$%
+table(df$DRG.code, df$DRG.text)
+## vs
+df %$% table(DRG.code, DRG.text)
+
+## %<>% compound operator
+temp_df <- df
+names(temp_df) %<>% tolower
+```
+
+Learn the rest, and see some neat uses of them all on
+the Github page for magrittr at [https://github.com/smbache/magrittr](https://github.com/smbache/magrittr)
+
+Example selecting variables programmatically with standard evaluation vs Non-standard
+evaluation (SE vs. NSE)
+
+NSE = basically, for less typing. 
+
+Verbs in `dplyr` can end ing `_`. For example: `select()` vs `select_()` etc.
+
+See [http://adv-r.had.co.nz/Computing-on-the-language.html](http://adv-r.had.co.nz/Computing-on-the-language.html)
+
+```{r}
+codes  <- c(210:250)
+myvars <- c("Provider.Id", "DRG.code", "Average.Medicare.Payments",
+            "Average.Covered.Charges", "Average.Total.Payments",
+            "Total.Discharges")
+
+dfx <- df %>% filter(DRG.code %in% codes) %>%
+    select_(.dots=myvars)
+```
+
+
+
+How `dplyr` plugs into databases:
+https://cran.rstudio.com/web/packages/dplyr/vignettes/introduction.html#databases
+
+Reshaping data from wide to long or vice-versa is a common task, but I was not satisfied with the docs for spread and gather. So I still refer to this gather and spread cookbook on cookbook-r.com: [http://www.cookbook-r.com/Manipulating_data/Converting_data_between_wide_and_long_format/](http://www.cookbook-r.com/Manipulating_data/Converting_data_between_wide_and_long_format/)
