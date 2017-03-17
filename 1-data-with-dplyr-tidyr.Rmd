@@ -240,7 +240,7 @@ James et al, p. 47
 
 `> vignette("introduction", "dplyr")`
 
-http://stackoverflow.com/documentation/r/topicse
+http://stackoverflow.com/documentation/r/topics
 
 
 # Advanced/Details
